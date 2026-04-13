@@ -13,7 +13,8 @@
 |---|---|---|
 | Frontend | Vercel | Built with [Lovable](https://lovable.dev) |
 | Backend | Render | May cold-start on first request (1–2 min) |
-
+| Cloud and Database | Firebase | Firestore is used to save data |
+| Frontend | Vercel | [Click Here](https://dating-profile-final-2026-zji6.vercel.app/) |
 > UI/UX Design by the R3i team.
 
 ---
