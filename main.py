@@ -17,6 +17,7 @@ from r3i_agent import (
     send_student_replied_email,
 )
 from firebase_client import db
+from email_client import send_email
 from google.cloud.firestore_v1 import SERVER_TIMESTAMP
 
 app = FastAPI()
@@ -273,29 +274,16 @@ def route_test_email(req: TestEmailRequest):
             "env_status": env_status,
         }
 
+    # FIX: delegate to email_client.send_email instead of duplicating SMTP logic.
+    # send_email() already handles all error cases and prints diagnostics.
     try:
-        import smtplib, ssl
-        from email.mime.text import MIMEText
-        from email.mime.multipart import MIMEMultipart
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "[R3i] Test Email — SMTP working ✓"
-        msg["From"]    = f"Project R3i <{gmail_user}>"
-        msg["To"]      = req.to
-        msg.attach(MIMEText(
-            "<p>If you can read this, your R3i email setup is working correctly. 🎉</p>",
-            "html"
-        ))
-
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
-            server.login(gmail_user, gmail_password)
-            server.sendmail(gmail_user, req.to, msg.as_string())
-
-        print(f"[TEST-EMAIL] ✓ Test email sent to {req.to}")
+        send_email(
+            to=req.to,
+            subject="[R3i] Test Email — SMTP working ✓",
+            html="<p>If you can read this, your R3i email setup is working correctly. 🎉</p>",
+        )
+        print(f"[TEST-EMAIL] ✓ Test email dispatched to {req.to}")
         return {"success": True, "message": f"Test email sent to {req.to}.", "env_status": env_status}
 
-    except smtplib.SMTPAuthenticationError as e:
-        return {"success": False, "reason": f"SMTPAuthenticationError: {e}", "env_status": env_status}
     except Exception as e:
         return {"success": False, "reason": str(e), "env_status": env_status}

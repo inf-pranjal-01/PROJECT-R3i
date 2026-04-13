@@ -64,6 +64,10 @@ OUTPUT RULES:
 1. Output ONLY valid JSON. No text outside JSON. No markdown fences.
 2. short_title: 3-6 words max describing the issue.
 3. confidence: float 0.0 to 1.0. Be honest — if genuinely unsure, give low confidence.
+   - 0.90-1.00: issue maps to exactly one category, no ambiguity
+   - 0.75-0.89: strong match but some overlap possible
+   - 0.50-0.74: plausible match, but another category could also fit
+   - 0.00-0.49: genuinely unclear or too vague to categorize
 4. flag: always 1.
 
 JSON SCHEMA:
@@ -74,14 +78,22 @@ JSON SCHEMA:
   "flag": 1
 }
 
-EXAMPLE:
+EXAMPLES:
+
 Input: "WiFi not working from past 2 weeks"
-{
-  "category": "Infrastructure_Maintenance",
-  "short_title": "WiFi Not Working",
-  "confidence": 0.95,
-  "flag": 1
-}
+{"category": "Infrastructure_Maintenance", "short_title": "WiFi Not Working", "confidence": 0.93, "flag": 1}
+
+Input: "senior students threatening me to do their work or they will beat me"
+{"category": "Anti-Ragging & Safety", "short_title": "Ragging Threat by Seniors", "confidence": 0.97, "flag": 1}
+
+Input: "the food in mess tastes stale and hygiene is very bad"
+{"category": "Mess & Food Quality", "short_title": "Stale Food and Poor Hygiene", "confidence": 0.88, "flag": 1}
+
+Input: "my roommate is playing loud music at night and I can't sleep"
+{"category": "Rules and Discipline", "short_title": "Noise Disturbance at Night", "confidence": 0.72, "flag": 1}
+
+Input: "things are bad here, please help"
+{"category": "Other", "short_title": "Campus Complaint", "confidence": 0.38, "flag": 1}
 """
 
 ENHANCER_PROMPT = """
@@ -137,8 +149,12 @@ def parse_json(raw: str) -> dict:
     if raw.startswith("```"):
         raw = "\n".join(raw.split("\n")[1:-1])
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
+        data = json.loads(raw)
+        # FIX: LLM sometimes returns confidence as a string e.g. "0.9" instead of
+        # a float. Coerce here so Firestore always stores a proper numeric value.
+        data["confidence"] = float(data.get("confidence", 0.0))
+        return data
+    except (json.JSONDecodeError, ValueError, TypeError):
         return {
             "category":    "Other",
             "short_title": "Campus Complaint",
@@ -332,7 +348,7 @@ def send_student_replied_email(
 def categorize_complaint(student_message: str) -> dict:
     raw         = call_ai(CATEGORIZATION_PROMPT, student_message)
     data        = parse_json(raw)
-    confidence  = data.get("confidence", 0.0)
+    confidence  = data.get("confidence", 0.0)   # already a float after parse_json
     short_title = data.get("short_title", "Campus Complaint")
 
     if confidence >= 0.75:
