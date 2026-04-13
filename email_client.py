@@ -19,14 +19,22 @@ def send_email(to: str, subject: str, html: str):
     # Read on every call — NOT at module load time.
     # On Render, module-level os.getenv() can fire before env vars are injected,
     # leaving both variables as None permanently and silently skipping all emails.
-    gmail_user     = os.getenv("GMAIL_USER")
-    gmail_password = os.getenv("GMAIL_APP_PASSWORD")
+    gmail_user     = os.getenv("GMAIL_USER", "").strip()
+    # Gmail app passwords are displayed with spaces (e.g. "xxxx xxxx xxxx xxxx")
+    # but the actual password is the 16-char version with NO spaces.
+    # We strip them here so it works whether the user stored it with or without spaces.
+    gmail_password = os.getenv("GMAIL_APP_PASSWORD", "").replace(" ", "").strip()
 
-    print(f"[EMAIL] Attempting send → to={to!r}  user_set={bool(gmail_user)}  pass_set={bool(gmail_password)}")
+    print(f"[EMAIL] Attempting send → to={to!r}  user={gmail_user!r}  pass_len={len(gmail_password)}")
 
     if not gmail_user or not gmail_password:
         print("[EMAIL] Skipped — GMAIL_USER or GMAIL_APP_PASSWORD not set in environment")
         return
+
+    if len(gmail_password) != 16:
+        print(f"[EMAIL] WARNING — App password is {len(gmail_password)} chars (expected 16). "
+              "Double-check the value stored in Render. It should be the 16-char app password "
+              "without spaces, e.g. 'abcdwxyzefghijkl'.")
 
     try:
         msg = MIMEMultipart("alternative")
@@ -40,11 +48,18 @@ def send_email(to: str, subject: str, html: str):
             server.login(gmail_user, gmail_password)
             server.sendmail(gmail_user, to, msg.as_string())
 
-        print(f"[EMAIL] Sent successfully → {to}")
+        print(f"[EMAIL] ✓ Sent successfully → {to}")
 
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"[EMAIL ERROR] Authentication failed — {e}. "
+              "Make sure 2-Step Verification is ON in your Google account and you are "
+              "using an App Password (not your regular Gmail password). "
+              "Generate one at: https://myaccount.google.com/apppasswords")
+    except smtplib.SMTPException as e:
+        print(f"[EMAIL ERROR] SMTP error — {e}")
     except Exception as e:
         # Email failure never crashes the main flow
-        print(f"[EMAIL ERROR] {e}")
+        print(f"[EMAIL ERROR] Unexpected error — {e}")
 
 
 # ──────────────────────────────────────────────────────────────
